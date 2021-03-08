@@ -23,6 +23,8 @@ type Function struct {
 	// required: true
 	Id string `json:"id,omitempty"`
 	// required: true
+	Description string `json:"desc,omitempty"`
+	// required: true
 	Type string `json:"type,omitempty"`
 	// required: true
 	Urls []string `json:"urls,omitempty"`

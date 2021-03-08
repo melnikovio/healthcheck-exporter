@@ -3,12 +3,11 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/healthcheck-exporter/cmd/api"
 	"github.com/healthcheck-exporter/cmd/authentication"
-	"github.com/healthcheck-exporter/cmd/bot"
+	"github.com/healthcheck-exporter/cmd/exporter"
 	"github.com/healthcheck-exporter/cmd/healthcheck"
 	"github.com/healthcheck-exporter/cmd/model"
-	"github.com/rs/cors"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	"net/http"
@@ -31,19 +30,13 @@ func main() {
 
 	authClient := authentication.NewAuthClient(config)
 
-	botClient := bot.NewBot(config)
+	ex := exporter.NewExporter(config)
 
-	hcClient := healthcheck.NewHealthCheck(config, authClient, botClient)
+	healthcheck.NewHealthCheck(config, authClient, ex)
 
-	// initialize api
-	router := api.NewRouter(hcClient)
-
-	// enable CORS
-	corsHandler := cors.New(cors.Options{
-		AllowedOrigins: []string{"*"},
-		AllowedHeaders: []string{"*"},
-		AllowedMethods: []string{"GET"},
-	})
-	log.Info(fmt.Sprintf(http.ListenAndServe(":8080",
-		corsHandler.Handler(router)).Error()))
+	http.Handle("/metrics", promhttp.Handler())
+	err = http.ListenAndServe(":2112", nil)
+	if err != nil {
+		panic(err)
+	}
 }

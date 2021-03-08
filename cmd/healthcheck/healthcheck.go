@@ -2,9 +2,8 @@ package healthcheck
 
 import (
 	"fmt"
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 	"github.com/healthcheck-exporter/cmd/authentication"
-	"github.com/healthcheck-exporter/cmd/bot"
+	"github.com/healthcheck-exporter/cmd/exporter"
 	"github.com/healthcheck-exporter/cmd/model"
 	log "github.com/sirupsen/logrus"
 	"net/http"
@@ -17,16 +16,16 @@ type HealthCheck struct {
 	authClient *authentication.AuthClient
 	status     *model.Status
 	wsClient   *WsClient
-	bot        *bot.Bot
+	exporter   *exporter.Exporter
 }
 
-func NewHealthCheck(config *model.Config, authClient *authentication.AuthClient, bot *bot.Bot) *HealthCheck {
+func NewHealthCheck(config *model.Config, authClient *authentication.AuthClient, ex *exporter.Exporter) *HealthCheck {
 	hc := HealthCheck{
 		config:     config,
 		authClient: authClient,
 		status:     &model.Status{},
 		wsClient:   NewWsClient(),
-		bot:        bot,
+		exporter:   ex,
 	}
 
 	hc.InitTasks()
@@ -51,6 +50,7 @@ func (hc *HealthCheck) InitTask(function model.Function) {
 
 	for true {
 		if hc.check(&function) {
+			hc.exporter.SetCounter(function.Id, 0)
 			for i := 0; i < len(hc.status.Task); i++ {
 				if hc.status.Task[i].Id == function.Id {
 					hc.status.Task[i].Status = "Online"
@@ -58,16 +58,12 @@ func (hc *HealthCheck) InitTask(function model.Function) {
 				}
 			}
 		} else {
+			hc.exporter.AddCounter(function.Id, function.Timeout)
 			for i := 0; i < len(hc.status.Task); i++ {
 				if hc.status.Task[i].Id == function.Id {
 					hc.status.Task[i].Status = "Failure"
 					hc.status.Task[i].FailureChecks++
 				}
-			}
-			msg := tgbotapi.NewMessage(47352032, fmt.Sprintf("Function on NLMK failed: %s", function.Id))
-			_, err := hc.bot.Bot.Send(msg)
-			if err != nil {
-				log.Error(fmt.Sprintf("Error while send message: ", err.Error()))
 			}
 		}
 
