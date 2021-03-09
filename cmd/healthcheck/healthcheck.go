@@ -106,13 +106,20 @@ func (hc *HealthCheck) checkHttpGet(function *model.Function) bool {
 		if err != nil {
 			return false
 		}
-		client := &http.Client{}
+		var client *http.Client
 		if function.AuthEnabled {
-			req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", hc.authClient.GetToken().AccessToken))
+			client = hc.authClient.Client
+		} else {
+			client = &http.Client{}
 		}
 
 		resp, err := client.Do(req)
-		if err != nil || resp == nil || resp.StatusCode != 200 {
+		if err != nil {
+			log.Error(fmt.Sprintf("Error http get request: %s", err.Error()))
+			return false
+		}
+		if resp == nil || resp.StatusCode != 200 {
+			log.Error(fmt.Sprintf("Empty http get result or invalide response code"))
 			return false
 		}
 	}
@@ -126,15 +133,22 @@ func (hc *HealthCheck) checkHttpPost(function *model.Function) bool {
 		if err != nil {
 			return false
 		}
-		client := &http.Client{}
+		var client *http.Client
 		if function.AuthEnabled {
-			req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", hc.authClient.GetToken().AccessToken))
+			client = hc.authClient.Client
+		} else {
+			client = &http.Client{}
 		}
 		req.Header.Add("accept", "*/*")
 		req.Header.Add("Content-Type", "application/json")
 
 		resp, err := client.Do(req)
-		if err != nil || resp == nil || resp.StatusCode != 200 {
+		if err != nil {
+			log.Error(fmt.Sprintf("Error http post request: %s", err.Error()))
+			return false
+		}
+		if resp == nil || resp.StatusCode != 200 {
+			log.Error(fmt.Sprintf("Empty http post result or invalide response code"))
 			return false
 		}
 	}

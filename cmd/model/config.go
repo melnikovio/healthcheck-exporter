@@ -12,8 +12,6 @@ type Authentication struct {
 	// required: true
 	AuthUrl string `json:"auth_url,omitempty"`
 	// required: true
-	Realm string `json:"realm,omitempty"`
-	// required: true
 	ClientId string `json:"client_id,omitempty"`
 	// required: true
 	ClientSecret string `json:"client_secret,omitempty"`

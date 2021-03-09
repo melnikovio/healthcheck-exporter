@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"github.com/healthcheck-exporter/cmd/authentication"
 	"github.com/healthcheck-exporter/cmd/exporter"
 	"github.com/healthcheck-exporter/cmd/healthcheck"
@@ -25,8 +24,6 @@ func main() {
 	if err != nil || config == nil {
 		panic(err)
 	}
-
-	log.Info(fmt.Sprintf("Config file is: %s", config))
 
 	authClient := authentication.NewAuthClient(config)
 
