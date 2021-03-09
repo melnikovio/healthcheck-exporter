@@ -108,7 +108,7 @@ func (hc *HealthCheck) checkHttpGet(function *model.Function) bool {
 		}
 		var client *http.Client
 		if function.AuthEnabled {
-			client = hc.authClient.Client
+			client = hc.authClient.GetClient()
 		} else {
 			client = &http.Client{}
 		}
@@ -135,7 +135,7 @@ func (hc *HealthCheck) checkHttpPost(function *model.Function) bool {
 		}
 		var client *http.Client
 		if function.AuthEnabled {
-			client = hc.authClient.Client
+			client = hc.authClient.GetClient()
 		} else {
 			client = &http.Client{}
 		}

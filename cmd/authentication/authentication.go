@@ -8,8 +8,7 @@ import (
 )
 
 type AuthClient struct {
-	config *model.Config
-	Client *http.Client
+	client *http.Client
 }
 
 func NewAuthClient(config *model.Config) *AuthClient {
@@ -23,9 +22,12 @@ func NewAuthClient(config *model.Config) *AuthClient {
 	client := oauth.Client(ctx)
 
 	authClient := AuthClient{
-		config: config,
-		Client: client,
+		client: client,
 	}
 
 	return &authClient
+}
+
+func (ac *AuthClient) GetClient() *http.Client {
+	return ac.client
 }
