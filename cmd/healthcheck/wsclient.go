@@ -29,23 +29,24 @@ func (ws *WsClient) addUrl(url string) {
 		log.Error(fmt.Sprintf("Error listening ws connection: %s", err.Error()))
 	}
 
-	go func() {
+	if c != nil {
+		go func() {
+			for {
+				_, message, err := c.ReadMessage()
+				if err != nil {
+					log.Info(fmt.Sprintf("Error reading ws connection message: %s", err.Error()))
+				}
+				log.Info(fmt.Sprintf("Received ws connection message"))
+				log.Trace(fmt.Sprintf("Received ws connection message: %s", message))
 
-		for {
-			_, message, err := c.ReadMessage()
-			if err != nil {
-				log.Info(fmt.Sprintf("Error reading ws connection message: %s", err.Error()))
-			}
-			log.Info(fmt.Sprintf("Received ws connection message"))
-			log.Trace(fmt.Sprintf("Received ws connection message: %s", message))
-
-			for i := 0; i < len(ws.connection); i++ {
-				if ws.connection[i].url == url {
-					ws.connection[i].time = int64(time.Now().Unix())
+				for i := 0; i < len(ws.connection); i++ {
+					if ws.connection[i].url == url {
+						ws.connection[i].time = int64(time.Now().Unix())
+					}
 				}
 			}
-		}
-	}()
+		}()
+	}
 	////
 }
 

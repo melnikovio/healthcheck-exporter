@@ -2,11 +2,13 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
+	"github.com/healthcheck-exporter/cmd/api"
 	"github.com/healthcheck-exporter/cmd/authentication"
 	"github.com/healthcheck-exporter/cmd/exporter"
 	"github.com/healthcheck-exporter/cmd/healthcheck"
 	"github.com/healthcheck-exporter/cmd/model"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/rs/cors"
 	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	"net/http"
@@ -29,11 +31,36 @@ func main() {
 
 	ex := exporter.NewExporter(config)
 
-	healthcheck.NewHealthCheck(config, authClient, ex)
+	hcClient := healthcheck.NewHealthCheck(config, authClient, ex)
+	//
+	//http.Handle("/metrics", promhttp.Handler())
+	//
+	//http.Handle("/probe", promhttp.Handler())
 
-	http.Handle("/metrics", promhttp.Handler())
-	err = http.ListenAndServe(":2112", nil)
-	if err != nil {
-		panic(err)
-	}
+
+	// initialize api
+	router := api.NewRouter(hcClient)
+
+	// enable CORS
+	corsHandler := cors.New(cors.Options{
+		AllowedOrigins: []string{"*"},
+		AllowedHeaders: []string{"*"},
+		AllowedMethods: []string{"GET"},
+	})
+
+	log.Info(fmt.Sprintf(http.ListenAndServe(":2112",
+		corsHandler.Handler(router)).Error()))
+
+
+
+	//log.Info(fmt.Sprintf(http.ListenAndServe(":2112", nil).Error()))
+
+
+
+	//
+	//
+	//err = http.ListenAndServe(":2112", nil)
+	//if err != nil {
+	//	panic(err)
+	//}
 }

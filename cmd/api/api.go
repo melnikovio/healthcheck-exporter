@@ -5,6 +5,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/healthcheck-exporter/cmd/api/controller"
 	"github.com/healthcheck-exporter/cmd/healthcheck"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	log "github.com/sirupsen/logrus"
 	"net/http"
 	"time"
@@ -35,10 +36,24 @@ func NewRouter(hc *healthcheck.HealthCheck) *mux.Router {
 			Handler(routerHandler)
 	}
 
+
+	router.
+		Methods("GET").
+		Path("/metrics").
+		Name("Metrics").
+		Handler(promhttp.Handler())
+
+	router.
+		Methods("GET").
+		Path("/probe").
+		Name("Metrics").
+		Handler(promhttp.Handler())
+
+
 	api = controller.ApiController{Hc: hc}
 
 	log.Info(
-		fmt.Sprintf("API Server initialized on route http://localhost:8080/api/v1/ping..."))
+		fmt.Sprintf("API Server initialized on route http://localhost:2112/ping..."))
 
 	return router
 }
