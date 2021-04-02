@@ -1,11 +1,13 @@
 {
   "authentication": {
-    "auth_url": "https://keycloak/",
-    "realm": "master",
+    "auth_url": "https://auth.com/",
     "client_id": "client",
     "client_secret": "123"
   },
-  "functions": [
+  "push_gateway": {
+    "address": "127.0.0.1"
+  },
+  "jobs": [
     {
       "id": "healthcheck_udl_rtdb_subscription",
       "desc": "Реальные данные (Подписка)",

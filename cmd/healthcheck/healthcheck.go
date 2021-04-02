@@ -34,12 +34,12 @@ func NewHealthCheck(config *model.Config, authClient *authentication.AuthClient,
 }
 
 func (hc *HealthCheck) InitTasks() {
-	for _, function := range hc.config.Functions {
+	for _, function := range hc.config.Jobs {
 		go hc.InitTask(function)
 	}
 }
 
-func (hc *HealthCheck) InitTask(function model.Function) {
+func (hc *HealthCheck) InitTask(function model.Job) {
 	log.Info(fmt.Sprintf("Started task with Id: %s", function.Id))
 	hc.status.Task = append(hc.status.Task, model.Task{
 		Id:            function.Id,
@@ -74,7 +74,7 @@ func (hc *HealthCheck) InitTask(function model.Function) {
 	}
 }
 
-func (hc *HealthCheck) check(function *model.Function) bool {
+func (hc *HealthCheck) check(function *model.Job) bool {
 	switch function.Type {
 	case "http_get":
 		return hc.checkHttpGet(function)
@@ -86,7 +86,7 @@ func (hc *HealthCheck) check(function *model.Function) bool {
 	return false
 }
 
-func (hc *HealthCheck) checkWs(function *model.Function) bool {
+func (hc *HealthCheck) checkWs(function *model.Job) bool {
 	for _, url := range function.Urls {
 		difference := hc.wsClient.DifferenceLastMessageTime(url)
 
@@ -100,7 +100,7 @@ func (hc *HealthCheck) checkWs(function *model.Function) bool {
 	return true
 }
 
-func (hc *HealthCheck) checkHttpGet(function *model.Function) bool {
+func (hc *HealthCheck) checkHttpGet(function *model.Job) bool {
 	for _, url := range function.Urls {
 		req, err := http.NewRequest("GET", url, nil)
 		if err != nil {
@@ -119,7 +119,7 @@ func (hc *HealthCheck) checkHttpGet(function *model.Function) bool {
 			return false
 		}
 		if resp == nil || resp.StatusCode != 200 {
-			log.Error(fmt.Sprintf("Empty http get result or invalide response code"))
+			log.Error(fmt.Sprintf("Empty http get result or invalid response code"))
 			return false
 		}
 	}
@@ -127,7 +127,7 @@ func (hc *HealthCheck) checkHttpGet(function *model.Function) bool {
 	return true
 }
 
-func (hc *HealthCheck) checkHttpPost(function *model.Function) bool {
+func (hc *HealthCheck) checkHttpPost(function *model.Job) bool {
 	for _, url := range function.Urls {
 		req, err := http.NewRequest("POST", url, strings.NewReader(function.Body))
 		if err != nil {

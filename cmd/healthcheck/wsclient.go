@@ -35,8 +35,10 @@ func (ws *WsClient) addUrl(url string) {
 				_, message, err := c.ReadMessage()
 				if err != nil {
 					log.Info(fmt.Sprintf("Error reading ws connection message: %s", err.Error()))
+					ws.addUrl(url)
+					break
 				}
-				log.Info(fmt.Sprintf("Received ws connection message"))
+				log.Debug(fmt.Sprintf("Received ws connection message"))
 				log.Trace(fmt.Sprintf("Received ws connection message: %s", message))
 
 				for i := 0; i < len(ws.connection); i++ {

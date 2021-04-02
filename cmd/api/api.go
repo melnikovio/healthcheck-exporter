@@ -36,7 +36,6 @@ func NewRouter(hc *healthcheck.HealthCheck) *mux.Router {
 			Handler(routerHandler)
 	}
 
-
 	router.
 		Methods("GET").
 		Path("/metrics").
@@ -49,11 +48,12 @@ func NewRouter(hc *healthcheck.HealthCheck) *mux.Router {
 		Name("Metrics").
 		Handler(promhttp.Handler())
 
-
 	api = controller.ApiController{Hc: hc}
 
 	log.Info(
 		fmt.Sprintf("API Server initialized on route http://localhost:2112/ping..."))
+	log.Info(
+		fmt.Sprintf("Prometheus Server initialized on route http://localhost:2112/metrics..."))
 
 	return router
 }

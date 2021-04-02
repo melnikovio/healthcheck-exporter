@@ -2,7 +2,9 @@ package authentication
 
 import (
 	"context"
+	"fmt"
 	"github.com/healthcheck-exporter/cmd/model"
+	log "github.com/sirupsen/logrus"
 	"golang.org/x/oauth2/clientcredentials"
 	"net/http"
 )
@@ -24,6 +26,8 @@ func NewAuthClient(config *model.Config) *AuthClient {
 	authClient := AuthClient{
 		client: client,
 	}
+
+	log.Info(fmt.Sprintf("Auth client registered on %s", config.Authentication.AuthUrl))
 
 	return &authClient
 }

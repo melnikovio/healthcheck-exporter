@@ -24,19 +24,23 @@ func NewExporter(config *model.Config) *Exporter {
 		config: config,
 	}
 
-	counters := make([]Counter, len(config.Functions))
-	for i := 0; i < len(config.Functions); i++ {
-		counter := promauto.NewCounter(prometheus.CounterOpts{
-			Name: fmt.Sprintf("%s_downtime", config.Functions[i].Id),
-			Help: config.Functions[i].Description,
-		})
-		counters[i] = Counter{
-			id:      config.Functions[i].Id,
-			counter: counter,
-		}
-	}
+	if config != nil {
+		counters := make([]Counter, len(config.Jobs))
+		for i := 0; i < len(config.Jobs); i++ {
+			counter := promauto.NewCounter(prometheus.CounterOpts{
+				Name: fmt.Sprintf("%s_downtime", config.Jobs[i].Id),
+				Help: config.Jobs[i].Description,
+			})
+			counters[i] = Counter{
+				id:      config.Jobs[i].Id,
+				counter: counter,
+			}
 
-	ex.counters = counters
+			log.Info(fmt.Sprintf("Registered counter %s", config.Jobs[i].Id))
+		}
+
+		ex.counters = counters
+	}
 
 	return &ex
 }
