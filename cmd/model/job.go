@@ -15,4 +15,6 @@ type Job struct {
 	AuthEnabled bool `json:"auth_enabled,omitempty"`
 	// required: true
 	Timeout int64 `json:"timeout,omitempty"`
+	// required: true
+	WatchDog WatchDog `json:"watchdog,omitempty"`
 }

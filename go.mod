@@ -8,8 +8,8 @@ require (
 	github.com/gorilla/mux v1.8.0
 	github.com/gorilla/websocket v1.4.2
 	github.com/jessevdk/go-flags v1.4.0 // indirect
-	github.com/openshift/api v0.0.0-20210603185846-379093ab5d80
-	github.com/openshift/client-go v0.0.0-20210521082421-73d9475a9142
+	github.com/openshift/api v0.0.0-20210603185846-379093ab5d80 // indirect
+	github.com/openshift/client-go v0.0.0-20210521082421-73d9475a9142 // indirect
 	github.com/prometheus/client_golang v1.9.0
 	github.com/prometheus/client_model v0.2.0
 	github.com/rs/cors v1.7.0

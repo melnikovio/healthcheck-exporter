@@ -17,7 +17,10 @@ type wsConnection struct {
 }
 
 func NewWsClient() *WsClient {
-	wc := WsClient{}
+	connection := make([]wsConnection, 0)
+	wc := WsClient{
+		connection: connection,
+	}
 
 	return &wc
 }
@@ -31,6 +34,10 @@ func (ws *WsClient) addUrl(url string) {
 
 	if c != nil {
 		go func() {
+			ws.connection = append(ws.connection, wsConnection{
+				url:  url,
+				time: int64(time.Now().Unix()),
+			})
 			for {
 				_, message, err := c.ReadMessage()
 				if err != nil {
@@ -38,7 +45,7 @@ func (ws *WsClient) addUrl(url string) {
 					ws.addUrl(url)
 					break
 				}
-				log.Debug(fmt.Sprintf("Received ws connection message"))
+				log.Info(fmt.Sprintf("Received ws connection message"))
 				log.Trace(fmt.Sprintf("Received ws connection message: %s", message))
 
 				for i := 0; i < len(ws.connection); i++ {

@@ -5,6 +5,7 @@ import (
 	"github.com/healthcheck-exporter/cmd/authentication"
 	"github.com/healthcheck-exporter/cmd/exporter"
 	"github.com/healthcheck-exporter/cmd/model"
+	"github.com/healthcheck-exporter/cmd/watchdog"
 	log "github.com/sirupsen/logrus"
 	"net/http"
 	"strings"
@@ -40,7 +41,7 @@ func (hc *HealthCheck) InitTasks() {
 }
 
 func (hc *HealthCheck) InitTask(function model.Job) {
-	log.Info(fmt.Sprintf("Started task with Id: %s", function.Id))
+	log.Info(fmt.Sprintf("%s: Started task", function.Id))
 	hc.status.Task = append(hc.status.Task, model.Task{
 		Id:            function.Id,
 		Status:        "Init",
@@ -63,6 +64,21 @@ func (hc *HealthCheck) InitTask(function model.Job) {
 				if hc.status.Task[i].Id == function.Id {
 					hc.status.Task[i].Status = "Failure"
 					hc.status.Task[i].FailureChecks++
+
+					if function.WatchDog.Enabled &&
+						hc.status.Task[i].FailureChecks >= function.WatchDog.FailureThreshold &&
+						(time.Now().Unix()-hc.status.Task[i].RestartTime) > function.WatchDog.AwaitAfterRestart {
+
+						for y := 0; y < len(function.WatchDog.Deployments); y++ {
+							err := watchdog.DeletePod(function.WatchDog.Deployments[y], function.WatchDog.Namespace)
+							if err != nil {
+								log.Error(fmt.Sprintf("Delete pod error: %s", err.Error()))
+							}
+						}
+
+						hc.status.Task[i].FailureChecks = 0
+						hc.status.Task[i].RestartTime = time.Now().Unix()
+					}
 				}
 			}
 		}
@@ -70,7 +86,7 @@ func (hc *HealthCheck) InitTask(function model.Job) {
 		duration := time.Duration(function.Timeout) * time.Second
 		time.Sleep(duration)
 
-		log.Info(fmt.Sprintf("Updated task with Id: %s", function.Id))
+		log.Info(fmt.Sprintf("%s: Task status updated", function.Id))
 	}
 }
 
@@ -91,6 +107,7 @@ func (hc *HealthCheck) checkWs(function *model.Job) bool {
 		difference := hc.wsClient.DifferenceLastMessageTime(url)
 
 		if difference > function.Timeout {
+			log.Error(fmt.Sprintf("%s: error wss connnection timeout", function.Id))
 			return false
 		}
 
@@ -119,7 +136,7 @@ func (hc *HealthCheck) checkHttpGet(function *model.Job) bool {
 			return false
 		}
 		if resp == nil || resp.StatusCode != 200 {
-			log.Error(fmt.Sprintf("Empty http get result or invalid response code"))
+			log.Error(fmt.Sprintf("%s: Empty http get result or invalid response code", function.Id))
 			return false
 		}
 	}

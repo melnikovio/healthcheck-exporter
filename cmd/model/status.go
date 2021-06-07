@@ -16,4 +16,6 @@ type Task struct {
 	SuccessChecks int `json:"success_checks,omitempty"`
 	// required: true
 	FailureChecks int `json:"failure_checks,omitempty"`
+	// required: true
+	RestartTime int64 `json:"restartTime,omitempty"`
 }
