@@ -1,0 +1,41 @@
+{
+  "authentication": {
+    "auth_url": "https://secure-keycloak-suep-omp-prod.app-ep.nlmk.com/auth/realms/master",
+    "client_id": "om-service",
+    "client_secret": "fa248699-fdce-49e0-9c26-3e454ce56075"
+  },
+  "push_gateway": {
+    "address": "127.0.0.1"
+  },
+  "jobs": [
+    {
+      "id": "healthcheck_zui_static",
+      "desc": "UI-статические файлы портала",
+      "type": "http_get",
+      "urls": [
+        "https://portal-suep-omp-prod.app-ep.nlmk.com/hostMnemo/assets/i18n/zyfraMnemoModule/ru_RU.json",
+        "https://portal-suep-omp-prod.app-ep.nlmk.com/hostEf/assets/i18n/ru_RU.json"
+      ],
+      "auth_enabled": false,
+      "timeout": 60,
+      "watchdog": {
+        "enabled": false
+      }
+    },
+    {
+      "id": "healthcheck_mnemo_api",
+      "desc": "Мнемосхемы (Backend)",
+      "type": "http_get",
+      "urls": [
+        "https://portal-suep-omp-prod.app-ep.nlmk.com/zif-mnemoschemes-storage/restapi/api/mnemo/info"
+      ],
+      "auth_enabled": true,
+      "timeout": 60,
+      "watchdog": {
+        "enabled": true,
+        "name": "zif-mnemoschemes-storage",
+        "failureThreshold": 2
+      }
+    }
+  ]
+}

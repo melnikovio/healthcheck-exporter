@@ -3,30 +3,40 @@ package watchdog
 import (
 	"context"
 	"fmt"
+	"github.com/healthcheck-exporter/cmd/common"
+	log "github.com/sirupsen/logrus"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	corev1client "k8s.io/client-go/kubernetes/typed/core/v1"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"os"
 )
 
 func DeletePod(name string, namespace string) error {
-	// Instantiate loader for kubeconfig file.
-	kubeconfig1 := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
-		clientcmd.NewDefaultClientConfigLoadingRules(),
-		&clientcmd.ConfigOverrides{},
-	)
+	log.Info(fmt.Sprintf("%s killing %s in %s", common.Bullet, name, namespace))
 
-	// Get a rest.Config from the kubeconfig file.  This will be passed into all
-	// the client objects we create.
-	restconfig, err := kubeconfig1.ClientConfig()
-	if err != nil {
-		panic(err)
+	var config *rest.Config
+	if _, err := os.Stat("/var/run/secrets/kubernetes.io/serviceaccount/token"); os.IsNotExist(err) {
+		config, err = rest.InClusterConfig()
+	} else {
+		// Instantiate loader for kubeconfig file.
+		kubeconfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
+			clientcmd.NewDefaultClientConfigLoadingRules(),
+			&clientcmd.ConfigOverrides{},
+		)
+
+		// Get a rest.Config from the kubeconfig file.  This will be passed into all
+		// the client objects we create.
+		config, err = kubeconfig.ClientConfig()
+		if err != nil {
+			log.Error(fmt.Sprintf("Error creating client connection: %s", err.Error()))
+		}
 	}
 
 	// Create a Kubernetes core/v1 client.
-	coreclient, err := corev1client.NewForConfig(restconfig)
+	coreclient, err := corev1client.NewForConfig(config)
 	if err != nil {
-		panic(err)
+		log.Error(fmt.Sprintf("Error creating client: %s", err.Error()))
 	}
 	//// List all Pods in our current Namespace.
 	//pods, err := coreclient.Pods(namespace).List(context.Background(), metav1.ListOptions{})
@@ -44,17 +54,17 @@ func DeletePod(name string, namespace string) error {
 		LabelSelector: fmt.Sprintf("app=%s", name),
 	})
 	if err != nil {
-		panic(err)
+		log.Error(fmt.Sprintf("Error while list all pods: %s", err.Error()))
 	}
 
-	fmt.Printf("Pods to delete in namespace %s:\n", namespace)
+	log.Info(fmt.Sprintf("Pods to delete in namespace %s:\n", namespace))
 	for _, pod := range pods.Items {
-		fmt.Printf("  %s: ", pod.Name)
 		err = coreclient.Pods(namespace).Delete(context.Background(), pod.Name, metav1.DeleteOptions{})
 		if err != nil {
-			panic(err)
+			log.Error(fmt.Sprintf("Error while delete pod %s: %s", pod.Name, err.Error()))
+		} else {
+			log.Info(fmt.Sprintf("Pod %s deleted", pod.Name))
 		}
-		fmt.Printf("  deleted\n")
 	}
 
 	return nil

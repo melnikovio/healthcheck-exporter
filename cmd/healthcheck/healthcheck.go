@@ -50,34 +50,47 @@ func (hc *HealthCheck) InitTask(function model.Job) {
 	})
 
 	for true {
-		if hc.check(&function) {
-			hc.exporter.SetCounter(function.Id, 0)
+		active := false
+		if function.DependentJob != "" {
 			for i := 0; i < len(hc.status.Task); i++ {
-				if hc.status.Task[i].Id == function.Id {
-					hc.status.Task[i].Status = "Online"
-					hc.status.Task[i].SuccessChecks++
+				if hc.status.Task[i].Id == function.DependentJob && hc.status.Task[i].Status == "Online" {
+					active = true
 				}
 			}
 		} else {
-			hc.exporter.AddCounter(function.Id, function.Timeout)
-			for i := 0; i < len(hc.status.Task); i++ {
-				if hc.status.Task[i].Id == function.Id {
-					hc.status.Task[i].Status = "Failure"
-					hc.status.Task[i].FailureChecks++
+			active = true
+		}
 
-					if function.WatchDog.Enabled &&
-						hc.status.Task[i].FailureChecks >= function.WatchDog.FailureThreshold &&
-						(time.Now().Unix()-hc.status.Task[i].RestartTime) > function.WatchDog.AwaitAfterRestart {
+		if active {
+			if hc.check(&function) {
+				hc.exporter.SetCounter(function.Id, 0)
+				for i := 0; i < len(hc.status.Task); i++ {
+					if hc.status.Task[i].Id == function.Id {
+						hc.status.Task[i].Status = "Online"
+						hc.status.Task[i].SuccessChecks++
+					}
+				}
+			} else {
+				hc.exporter.AddCounter(function.Id, function.Timeout)
+				for i := 0; i < len(hc.status.Task); i++ {
+					if hc.status.Task[i].Id == function.Id {
+						hc.status.Task[i].Status = "Failure"
+						hc.status.Task[i].FailureChecks++
 
-						for y := 0; y < len(function.WatchDog.Deployments); y++ {
-							err := watchdog.DeletePod(function.WatchDog.Deployments[y], function.WatchDog.Namespace)
-							if err != nil {
-								log.Error(fmt.Sprintf("Delete pod error: %s", err.Error()))
+						if function.WatchDog.Enabled &&
+							hc.status.Task[i].FailureChecks >= function.WatchDog.FailureThreshold &&
+							(time.Now().Unix()-hc.status.Task[i].RestartTime) > function.WatchDog.AwaitAfterRestart {
+
+							for y := 0; y < len(function.WatchDog.Deployments); y++ {
+								err := watchdog.DeletePod(function.WatchDog.Deployments[y], function.WatchDog.Namespace)
+								if err != nil {
+									log.Error(fmt.Sprintf("Delete pod error: %s", err.Error()))
+								}
 							}
-						}
 
-						hc.status.Task[i].FailureChecks = 0
-						hc.status.Task[i].RestartTime = time.Now().Unix()
+							hc.status.Task[i].FailureChecks = 0
+							hc.status.Task[i].RestartTime = time.Now().Unix()
+						}
 					}
 				}
 			}
@@ -165,7 +178,7 @@ func (hc *HealthCheck) checkHttpPost(function *model.Job) bool {
 			return false
 		}
 		if resp == nil || resp.StatusCode != 200 {
-			log.Error(fmt.Sprintf("Empty http post result or invalide response code"))
+			log.Error(fmt.Sprintf("Empty http post result or invalid response code"))
 			return false
 		}
 	}

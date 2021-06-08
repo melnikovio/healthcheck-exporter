@@ -16,5 +16,7 @@ type Job struct {
 	// required: true
 	Timeout int64 `json:"timeout,omitempty"`
 	// required: true
+	DependentJob string `json:"dependentJob,omitempty"`
+	// required: true
 	WatchDog WatchDog `json:"watchdog,omitempty"`
 }

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/healthcheck-exporter/cmd/api"
 	"github.com/healthcheck-exporter/cmd/authentication"
+	"github.com/healthcheck-exporter/cmd/common"
 	"github.com/healthcheck-exporter/cmd/configuration"
 	"github.com/healthcheck-exporter/cmd/exporter"
 	"github.com/healthcheck-exporter/cmd/healthcheck"
@@ -13,6 +14,8 @@ import (
 )
 
 func main() {
+	fmt.Println(common.Logo)
+
 	config := configuration.GetConfiguration()
 	authClient := authentication.NewAuthClient(config)
 
