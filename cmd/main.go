@@ -8,6 +8,7 @@ import (
 	"github.com/healthcheck-exporter/cmd/configuration"
 	"github.com/healthcheck-exporter/cmd/exporter"
 	"github.com/healthcheck-exporter/cmd/healthcheck"
+	"github.com/healthcheck-exporter/cmd/watchdog"
 	"github.com/rs/cors"
 	log "github.com/sirupsen/logrus"
 	"net/http"
@@ -21,7 +22,9 @@ func main() {
 
 	ex := exporter.NewExporter(config)
 
-	hcClient := healthcheck.NewHealthCheck(config, authClient, ex)
+	wd := watchdog.NewWatchDog()
+
+	hcClient := healthcheck.NewHealthCheck(config, authClient, ex, wd)
 	//
 	//http.Handle("/metrics", promhttp.Handler())
 	//

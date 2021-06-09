@@ -15,8 +15,9 @@ type Exporter struct {
 }
 
 type Counter struct {
-	id      string
-	counter prometheus.Counter
+	id       string
+	status   prometheus.Gauge
+	downtime prometheus.Gauge
 }
 
 func NewExporter(config *model.Config) *Exporter {
@@ -27,13 +28,18 @@ func NewExporter(config *model.Config) *Exporter {
 	if config != nil {
 		counters := make([]Counter, len(config.Jobs))
 		for i := 0; i < len(config.Jobs); i++ {
-			counter := promauto.NewCounter(prometheus.CounterOpts{
+			downtime := promauto.NewGauge(prometheus.GaugeOpts{
 				Name: fmt.Sprintf("%s_downtime", config.Jobs[i].Id),
 				Help: config.Jobs[i].Description,
 			})
+			status := promauto.NewGauge(prometheus.GaugeOpts{
+				Name: fmt.Sprintf("%s_status", config.Jobs[i].Id),
+				Help: fmt.Sprintf("%s работает (0: нет, 1: да)", config.Jobs[i].Description),
+			})
 			counters[i] = Counter{
-				id:      config.Jobs[i].Id,
-				counter: counter,
+				id:       config.Jobs[i].Id,
+				downtime: downtime,
+				status:   status,
 			}
 
 			log.Info(fmt.Sprintf("Registered counter %s", config.Jobs[i].Id))
@@ -48,17 +54,30 @@ func NewExporter(config *model.Config) *Exporter {
 func (ex *Exporter) SetCounter(id string, value int64) {
 	for i := 0; i < len(ex.counters); i++ {
 		if ex.counters[i].id == id {
-			val := float64(value)
-			m := dto.Metric{
-				Counter: &dto.Counter{
-					Value: &val,
-				},
-			}
+			//val := float64(value)
+			//downtimeMetric := dto.Metric{
+			//	Counter: &dto.Counter{
+			//		Value: &val,
+			//	},
+			//}
+			//
+			//err := ex.counters[i].downtime.Write(&downtimeMetric)
+			//if err != nil {
+			//	log.Error(fmt.Sprintf("Error writing metrics: %s", err.Error()))
+			//}
+			ex.counters[i].downtime.Set(0)
 
-			err := ex.counters[i].counter.Write(&m)
-			if err != nil {
-				log.Error(fmt.Sprintf("Error writing metrics: %s", err.Error()))
-			}
+			//val2 := float64(0)
+			//statusMetric := dto.Metric{
+			//	Gauge: &dto.Gauge{
+			//		Value: &val2,
+			//	},
+			//}
+			//err = ex.counters[i].status.Write(&statusMetric)
+			ex.counters[i].status.Set(1)
+			//if err != nil {
+			//	log.Error(fmt.Sprintf("Error writing metrics: %s", err.Error()))
+			//}
 		}
 	}
 }
@@ -67,7 +86,18 @@ func (ex *Exporter) AddCounter(id string, value int64) {
 	for i := 0; i < len(ex.counters); i++ {
 		if ex.counters[i].id == id {
 			val := float64(value)
-			ex.counters[i].counter.Add(val)
+			ex.counters[i].downtime.Add(val)
+
+			val2 := float64(0)
+			statusMetric := dto.Metric{
+				Counter: &dto.Counter{
+					Value: &val2,
+				},
+			}
+			err := ex.counters[i].status.Write(&statusMetric)
+			if err != nil {
+				log.Error(fmt.Sprintf("Error writing metrics: %s", err.Error()))
+			}
 		}
 	}
 }

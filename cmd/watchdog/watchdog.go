@@ -12,13 +12,13 @@ import (
 	"os"
 )
 
-func DeletePod(name string, namespace string) error {
-	log.Info(fmt.Sprintf("%s killing %s in %s", common.Bullet, name, namespace))
+type WatchDog struct {
+	client *corev1client.CoreV1Client
+}
 
+func NewWatchDog() *WatchDog {
 	var config *rest.Config
 	if _, err := os.Stat("/var/run/secrets/kubernetes.io/serviceaccount/token"); os.IsNotExist(err) {
-		config, err = rest.InClusterConfig()
-	} else {
 		// Instantiate loader for kubeconfig file.
 		kubeconfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
 			clientcmd.NewDefaultClientConfigLoadingRules(),
@@ -31,13 +31,26 @@ func DeletePod(name string, namespace string) error {
 		if err != nil {
 			log.Error(fmt.Sprintf("Error creating client connection: %s", err.Error()))
 		}
+	} else {
+		config, err = rest.InClusterConfig()
 	}
 
 	// Create a Kubernetes core/v1 client.
-	coreclient, err := corev1client.NewForConfig(config)
+	coreClient, err := corev1client.NewForConfig(config)
 	if err != nil {
 		log.Error(fmt.Sprintf("Error creating client: %s", err.Error()))
 	}
+
+	wd := WatchDog{
+		client: coreClient,
+	}
+
+	return &wd
+}
+
+func (wd *WatchDog) DeletePod(name string, namespace string) error {
+	log.Info(fmt.Sprintf("%s killing %s in %s", common.Bullet, name, namespace))
+
 	//// List all Pods in our current Namespace.
 	//pods, err := coreclient.Pods(namespace).List(context.Background(), metav1.ListOptions{})
 	//if err != nil {
@@ -50,16 +63,16 @@ func DeletePod(name string, namespace string) error {
 	//}
 
 	// List all Pods in our current Namespace.
-	pods, err := coreclient.Pods(namespace).List(context.Background(), metav1.ListOptions{
+	pods, err := wd.client.Pods(namespace).List(context.Background(), metav1.ListOptions{
 		LabelSelector: fmt.Sprintf("app=%s", name),
 	})
 	if err != nil {
 		log.Error(fmt.Sprintf("Error while list all pods: %s", err.Error()))
 	}
 
-	log.Info(fmt.Sprintf("Pods to delete in namespace %s:\n", namespace))
+	log.Info(fmt.Sprintf("Pods to delete in namespace %s:", namespace))
 	for _, pod := range pods.Items {
-		err = coreclient.Pods(namespace).Delete(context.Background(), pod.Name, metav1.DeleteOptions{})
+		err = wd.client.Pods(namespace).Delete(context.Background(), pod.Name, metav1.DeleteOptions{})
 		if err != nil {
 			log.Error(fmt.Sprintf("Error while delete pod %s: %s", pod.Name, err.Error()))
 		} else {
@@ -163,9 +176,9 @@ func start() error {
 		panic(err)
 	}
 
-	fmt.Printf("Pods in namespace %s:\n", namespace)
+	log.Info(fmt.Sprintf("Pods in namespace %s:", namespace))
 	for _, pod := range pods.Items {
-		fmt.Printf("  %s\n", pod.Name)
+		log.Info(fmt.Sprintf("  %s", pod.Name))
 	}
 
 	// List all Pods in our current Namespace.
@@ -176,9 +189,9 @@ func start() error {
 		panic(err)
 	}
 
-	fmt.Printf("Pods in namespace %s:\n", namespace)
+	log.Info(fmt.Sprintf("Pods in namespace %s:", namespace))
 	for _, pod := range pods1.Items {
-		fmt.Printf("  %s\n", pod.Name)
+		log.Info(fmt.Sprintf("  %s", pod.Name))
 	}
 
 	//err = coreclient.Pods(namespace).Delete(context.Background(), "json-server-57bbd69859-bcshr", metav1.DeleteOptions{})

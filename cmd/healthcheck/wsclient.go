@@ -25,27 +25,27 @@ func NewWsClient() *WsClient {
 	return &wc
 }
 
-func (ws *WsClient) addUrl(url string) {
+func (ws *WsClient) addUrl(jobId string, url string) {
 	////
 	c, _, err := websocket.DefaultDialer.Dial(url, nil)
 	if err != nil {
-		log.Error(fmt.Sprintf("Error listening ws connection: %s", err.Error()))
+		log.Error(fmt.Sprintf("Error listening ws connection (%s): %s", url, err.Error()))
 	}
 
 	if c != nil {
 		go func() {
 			ws.connection = append(ws.connection, wsConnection{
 				url:  url,
-				time: int64(time.Now().Unix()),
+				time: time.Now().Unix(),
 			})
 			for {
 				_, message, err := c.ReadMessage()
 				if err != nil {
 					log.Info(fmt.Sprintf("Error reading ws connection message: %s", err.Error()))
-					ws.addUrl(url)
+					ws.addUrl(jobId, url)
 					break
 				}
-				log.Info(fmt.Sprintf("Received ws connection message"))
+				log.Info(fmt.Sprintf("%s: Received ws connection message", jobId))
 				log.Trace(fmt.Sprintf("Received ws connection message: %s", message))
 
 				for i := 0; i < len(ws.connection); i++ {
@@ -59,26 +59,26 @@ func (ws *WsClient) addUrl(url string) {
 	////
 }
 
-func (ws *WsClient) LastMessageTime(url string) int64 {
+func (ws *WsClient) LastMessageTime(jobId string, url string) int64 {
 	for i := 0; i < len(ws.connection); i++ {
 		if ws.connection[i].url == url {
 			return ws.connection[i].time
 		}
 	}
 
-	ws.addUrl(url)
+	ws.addUrl(jobId, url)
 
 	return 0
 }
 
-func (ws *WsClient) DifferenceLastMessageTime(url string) int64 {
+func (ws *WsClient) DifferenceLastMessageTime(jobId string, url string) int64 {
 	for i := 0; i < len(ws.connection); i++ {
 		if ws.connection[i].url == url {
-			return int64(time.Now().Unix()) - ws.connection[i].time
+			return time.Now().Unix() - ws.connection[i].time
 		}
 	}
 
-	ws.addUrl(url)
+	ws.addUrl(jobId, url)
 
 	return 0
 }

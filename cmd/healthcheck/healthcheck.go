@@ -18,15 +18,19 @@ type HealthCheck struct {
 	status     *model.Status
 	wsClient   *WsClient
 	exporter   *exporter.Exporter
+	watchDog   *watchdog.WatchDog
+	httpClient *http.Client
 }
 
-func NewHealthCheck(config *model.Config, authClient *authentication.AuthClient, ex *exporter.Exporter) *HealthCheck {
+func NewHealthCheck(config *model.Config, authClient *authentication.AuthClient, ex *exporter.Exporter, wd *watchdog.WatchDog) *HealthCheck {
 	hc := HealthCheck{
 		config:     config,
 		authClient: authClient,
 		status:     &model.Status{},
 		wsClient:   NewWsClient(),
 		exporter:   ex,
+		watchDog:   wd,
+		httpClient: &http.Client{},
 	}
 
 	hc.InitTasks()
@@ -68,6 +72,10 @@ func (hc *HealthCheck) InitTask(function model.Job) {
 					if hc.status.Task[i].Id == function.Id {
 						hc.status.Task[i].Status = "Online"
 						hc.status.Task[i].SuccessChecks++
+						hc.status.Task[i].FailureChecks = 0
+
+						log.Info(fmt.Sprintf("%s: Task status updated: %s",
+							function.Id, hc.status.Task[i].Status))
 					}
 				}
 			} else {
@@ -76,13 +84,15 @@ func (hc *HealthCheck) InitTask(function model.Job) {
 					if hc.status.Task[i].Id == function.Id {
 						hc.status.Task[i].Status = "Failure"
 						hc.status.Task[i].FailureChecks++
+						log.Info(fmt.Sprintf("%s: Task status updated: %s, count: %d",
+							function.Id, hc.status.Task[i].Status, hc.status.Task[i].FailureChecks))
 
 						if function.WatchDog.Enabled &&
 							hc.status.Task[i].FailureChecks >= function.WatchDog.FailureThreshold &&
 							(time.Now().Unix()-hc.status.Task[i].RestartTime) > function.WatchDog.AwaitAfterRestart {
 
 							for y := 0; y < len(function.WatchDog.Deployments); y++ {
-								err := watchdog.DeletePod(function.WatchDog.Deployments[y], function.WatchDog.Namespace)
+								err := hc.watchDog.DeletePod(function.WatchDog.Deployments[y], function.WatchDog.Namespace)
 								if err != nil {
 									log.Error(fmt.Sprintf("Delete pod error: %s", err.Error()))
 								}
@@ -99,7 +109,6 @@ func (hc *HealthCheck) InitTask(function model.Job) {
 		duration := time.Duration(function.Timeout) * time.Second
 		time.Sleep(duration)
 
-		log.Info(fmt.Sprintf("%s: Task status updated", function.Id))
 	}
 }
 
@@ -117,10 +126,10 @@ func (hc *HealthCheck) check(function *model.Job) bool {
 
 func (hc *HealthCheck) checkWs(function *model.Job) bool {
 	for _, url := range function.Urls {
-		difference := hc.wsClient.DifferenceLastMessageTime(url)
+		difference := hc.wsClient.DifferenceLastMessageTime(function.Id, url)
 
 		if difference > function.Timeout {
-			log.Error(fmt.Sprintf("%s: error wss connnection timeout", function.Id))
+			log.Error(fmt.Sprintf("%s: error wss last message exceeded timeout", function.Id))
 			return false
 		}
 
@@ -130,20 +139,22 @@ func (hc *HealthCheck) checkWs(function *model.Job) bool {
 	return true
 }
 
+func (hc *HealthCheck) getHttpClient(function *model.Job) *http.Client {
+	if function.AuthEnabled {
+		return hc.authClient.GetClient()
+	} else {
+		return hc.httpClient
+	}
+}
+
 func (hc *HealthCheck) checkHttpGet(function *model.Job) bool {
 	for _, url := range function.Urls {
 		req, err := http.NewRequest("GET", url, nil)
 		if err != nil {
 			return false
 		}
-		var client *http.Client
-		if function.AuthEnabled {
-			client = hc.authClient.GetClient()
-		} else {
-			client = &http.Client{}
-		}
 
-		resp, err := client.Do(req)
+		resp, err := hc.getHttpClient(function).Do(req)
 		if err != nil {
 			log.Error(fmt.Sprintf("Error http get request: %s", err.Error()))
 			return false
@@ -163,16 +174,11 @@ func (hc *HealthCheck) checkHttpPost(function *model.Job) bool {
 		if err != nil {
 			return false
 		}
-		var client *http.Client
-		if function.AuthEnabled {
-			client = hc.authClient.GetClient()
-		} else {
-			client = &http.Client{}
-		}
+
 		req.Header.Add("accept", "*/*")
 		req.Header.Add("Content-Type", "application/json")
 
-		resp, err := client.Do(req)
+		resp, err := hc.getHttpClient(function).Do(req)
 		if err != nil {
 			log.Error(fmt.Sprintf("Error http post request: %s", err.Error()))
 			return false
