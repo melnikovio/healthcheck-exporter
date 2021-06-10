@@ -83,6 +83,24 @@ func (wd *WatchDog) DeletePod(name string, namespace string) error {
 	return nil
 }
 
+func (wd *WatchDog) GetPodIp(name string, namespace string) ([]string, error) {
+	// List all Pods in our current Namespace.
+	pods, err := wd.client.Pods(namespace).List(context.Background(), metav1.ListOptions{
+		LabelSelector: fmt.Sprintf("app=%s", name),
+	})
+	if err != nil {
+		log.Error(fmt.Sprintf("Error while list all pods: %s", err.Error()))
+	}
+
+	log.Info(fmt.Sprintf("Pods to delete in namespace %s:", namespace))
+	result := make([]string, 0)
+	for _, pod := range pods.Items {
+		result = append(result, pod.Status.PodIP)
+	}
+
+	return result, nil
+}
+
 func start() error {
 	//var kubeconfig *string
 	//if home := homeDir(); home != "" {

@@ -33,13 +33,15 @@ func (ws *WsClient) addUrl(jobId string, url string) {
 	}
 
 	if c != nil {
+		ws.connection = append(ws.connection, wsConnection{
+			url:  url,
+			time: time.Now().Unix(),
+		})
+
 		go func() {
-			ws.connection = append(ws.connection, wsConnection{
-				url:  url,
-				time: time.Now().Unix(),
-			})
 			for {
-				_, message, err := c.ReadMessage()
+				//_, message, err := c.ReadMessage()
+				_, message, err := c.NextReader()
 				if err != nil {
 					log.Info(fmt.Sprintf("Error reading ws connection message: %s", err.Error()))
 					ws.addUrl(jobId, url)

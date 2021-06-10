@@ -1,6 +1,7 @@
 package healthcheck
 
 import (
+	"context"
 	"fmt"
 	"github.com/healthcheck-exporter/cmd/authentication"
 	"github.com/healthcheck-exporter/cmd/exporter"
@@ -8,6 +9,7 @@ import (
 	"github.com/healthcheck-exporter/cmd/watchdog"
 	log "github.com/sirupsen/logrus"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -39,20 +41,16 @@ func NewHealthCheck(config *model.Config, authClient *authentication.AuthClient,
 }
 
 func (hc *HealthCheck) InitTasks() {
-	for _, function := range hc.config.Jobs {
-		go hc.InitTask(function)
+	for i := 0; i < len(hc.config.Jobs); i++ {
+		hc.InitTask(&hc.config.Jobs[i])
+	}
+
+	for i := 0; i < len(hc.config.Jobs); i++ {
+		go hc.StartTask(&hc.config.Jobs[i])
 	}
 }
 
-func (hc *HealthCheck) InitTask(function model.Job) {
-	log.Info(fmt.Sprintf("%s: Started task", function.Id))
-	hc.status.Task = append(hc.status.Task, model.Task{
-		Id:            function.Id,
-		Status:        "Init",
-		SuccessChecks: 0,
-		FailureChecks: 0,
-	})
-
+func (hc *HealthCheck) StartTask(function *model.Job) {
 	for true {
 		active := false
 		if function.DependentJob != "" {
@@ -66,15 +64,20 @@ func (hc *HealthCheck) InitTask(function model.Job) {
 		}
 
 		if active {
-			if hc.check(&function) {
+			if hc.check(function) {
 				hc.exporter.SetCounter(function.Id, 0)
 				for i := 0; i < len(hc.status.Task); i++ {
 					if hc.status.Task[i].Id == function.Id {
+						if hc.status.Task[i].Status != "Online" {
+							log.Info(fmt.Sprintf("%s: Task status updated: %s",
+								function.Id, hc.status.Task[i].Status))
+						}
+
 						hc.status.Task[i].Status = "Online"
 						hc.status.Task[i].SuccessChecks++
 						hc.status.Task[i].FailureChecks = 0
 
-						log.Info(fmt.Sprintf("%s: Task status updated: %s",
+						log.Debug(fmt.Sprintf("%s: Task status updated: %s",
 							function.Id, hc.status.Task[i].Status))
 					}
 				}
@@ -109,6 +112,39 @@ func (hc *HealthCheck) InitTask(function model.Job) {
 		duration := time.Duration(function.Timeout) * time.Second
 		time.Sleep(duration)
 
+	}
+}
+
+func (hc *HealthCheck) InitTask(function *model.Job) {
+	log.Info(fmt.Sprintf("%s: Started task", function.Id))
+	hc.status.Task = append(hc.status.Task, model.Task{
+		Id:            function.Id,
+		Status:        "Init",
+		SuccessChecks: 0,
+		FailureChecks: 0,
+	})
+
+	if function.Location.Type == "kubernetes" {
+		podIps, err := hc.watchDog.GetPodIp(function.Location.Deployment, function.Location.Namespace)
+		if err != nil {
+			log.Error(fmt.Sprintf("%s: error wss last message exceeded timeout", function.Id))
+			return
+		}
+
+		urls := make([]string, 0)
+		for _, u := range function.Urls {
+			base, _ := url.Parse(u)
+
+			for _, ip := range podIps {
+				base.Host = fmt.Sprintf("%s:%s", ip, function.Location.Port)
+				base.Scheme = "http"
+				newurl := base.String()
+				//newurl := fmt.Sprintf("%s://%s:%s%s", "http", ip, function.Location.Port, base.Path)
+				urls = append(urls, newurl)
+			}
+		}
+
+		fmt.Println(urls)
 	}
 }
 
@@ -154,6 +190,12 @@ func (hc *HealthCheck) checkHttpGet(function *model.Job) bool {
 			return false
 		}
 
+		if function.ResponseTimeout > 0 {
+			ctx, cancel := context.WithTimeout(context.Background(), time.Duration(function.ResponseTimeout)*time.Second)
+			defer cancel()
+			req = req.WithContext(ctx)
+		}
+
 		resp, err := hc.getHttpClient(function).Do(req)
 		if err != nil {
 			log.Error(fmt.Sprintf("Error http get request: %s", err.Error()))
@@ -177,6 +219,12 @@ func (hc *HealthCheck) checkHttpPost(function *model.Job) bool {
 
 		req.Header.Add("accept", "*/*")
 		req.Header.Add("Content-Type", "application/json")
+
+		if function.ResponseTimeout > 0 {
+			ctx, cancel := context.WithTimeout(context.Background(), time.Duration(function.ResponseTimeout)*time.Second)
+			defer cancel()
+			req = req.WithContext(ctx)
+		}
 
 		resp, err := hc.getHttpClient(function).Do(req)
 		if err != nil {
