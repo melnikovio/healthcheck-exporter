@@ -28,8 +28,10 @@ func NewHealthCheck(config *model.Config, authClient *authentication.AuthClient,
 	hc := HealthCheck{
 		config:     config,
 		authClient: authClient,
-		status:     &model.Status{},
-		wsClient:   NewWsClient(),
+		status:     &model.Status{
+			Tasks: make(map[string]*model.Task),
+		},
+		wsClient:   NewWsClient(ex),
 		exporter:   ex,
 		watchDog:   wd,
 		httpClient: &http.Client{},
@@ -50,14 +52,29 @@ func (hc *HealthCheck) InitTasks() {
 	}
 }
 
+func (hc *HealthCheck) getTask(taskId string) *model.Task {
+	if hc.status.Tasks[taskId] == nil {
+		task := model.Task{
+			Id:            taskId,
+			Online:        false,
+			SuccessChecks: 0,
+			FailureChecks: 0,
+			RestartTime:   0,
+		}
+		hc.status.Tasks[taskId] = &task
+	}
+	return hc.status.Tasks[taskId]
+}
+
 func (hc *HealthCheck) StartTask(function *model.Job) {
+	counter := 0
+	task := hc.getTask(function.Id)
 	for true {
+		counter++
 		active := false
 		if function.DependentJob != "" {
-			for i := 0; i < len(hc.status.Task); i++ {
-				if hc.status.Task[i].Id == function.DependentJob && hc.status.Task[i].Status == "Online" {
-					active = true
-				}
+			if hc.getTask(function.DependentJob).Online {
+				active = true
 			}
 		} else {
 			active = true
@@ -66,45 +83,38 @@ func (hc *HealthCheck) StartTask(function *model.Job) {
 		if active {
 			if hc.check(function) {
 				hc.exporter.SetCounter(function.Id, 0)
-				for i := 0; i < len(hc.status.Task); i++ {
-					if hc.status.Task[i].Id == function.Id {
-						if hc.status.Task[i].Status != "Online" {
-							log.Info(fmt.Sprintf("%s: Task status updated: %s",
-								function.Id, hc.status.Task[i].Status))
-						}
-
-						hc.status.Task[i].Status = "Online"
-						hc.status.Task[i].SuccessChecks++
-						hc.status.Task[i].FailureChecks = 0
-
-						log.Debug(fmt.Sprintf("%s: Task status updated: %s",
-							function.Id, hc.status.Task[i].Status))
-					}
+				if task.Online {
+					log.Info(fmt.Sprintf("%s: Task status updated (is online?): %t",
+						function.Id, hc.status.Tasks[function.Id].Online))
 				}
+
+				task.Online = true
+				task.SuccessChecks++
+				task.FailureChecks = 0
+
+				log.Debug(fmt.Sprintf("%s: Task status updated (is online?): %t",
+					function.Id, hc.status.Tasks[function.Id].Online))
 			} else {
 				hc.exporter.AddCounter(function.Id, function.Timeout)
-				for i := 0; i < len(hc.status.Task); i++ {
-					if hc.status.Task[i].Id == function.Id {
-						hc.status.Task[i].Status = "Failure"
-						hc.status.Task[i].FailureChecks++
-						log.Info(fmt.Sprintf("%s: Task status updated: %s, count: %d",
-							function.Id, hc.status.Task[i].Status, hc.status.Task[i].FailureChecks))
 
-						if function.WatchDog.Enabled &&
-							hc.status.Task[i].FailureChecks >= function.WatchDog.FailureThreshold &&
-							(time.Now().Unix()-hc.status.Task[i].RestartTime) > function.WatchDog.AwaitAfterRestart {
+				task.Online = false
+				task.FailureChecks++
+				log.Info(fmt.Sprintf("%s: Task status updated (is online?): %t, count: %d",
+					function.Id, hc.status.Tasks[function.Id].Online, hc.status.Tasks[function.Id].FailureChecks))
 
-							for y := 0; y < len(function.WatchDog.Deployments); y++ {
-								err := hc.watchDog.DeletePod(function.WatchDog.Deployments[y], function.WatchDog.Namespace)
-								if err != nil {
-									log.Error(fmt.Sprintf("Delete pod error: %s", err.Error()))
-								}
-							}
+				if function.WatchDog.Enabled &&
+					task.FailureChecks >= function.WatchDog.FailureThreshold &&
+					(time.Now().Unix()-task.RestartTime) > function.WatchDog.AwaitAfterRestart {
 
-							hc.status.Task[i].FailureChecks = 0
-							hc.status.Task[i].RestartTime = time.Now().Unix()
+					for y := 0; y < len(function.WatchDog.Deployments); y++ {
+						err := hc.watchDog.DeletePod(function.WatchDog.Deployments[y], function.WatchDog.Namespace)
+						if err != nil {
+							log.Error(fmt.Sprintf("Delete pod error: %s", err.Error()))
 						}
 					}
+
+					task.FailureChecks = 0
+					task.RestartTime = time.Now().Unix()
 				}
 			}
 		}
@@ -116,13 +126,8 @@ func (hc *HealthCheck) StartTask(function *model.Job) {
 }
 
 func (hc *HealthCheck) InitTask(function *model.Job) {
-	log.Info(fmt.Sprintf("%s: Started task", function.Id))
-	hc.status.Task = append(hc.status.Task, model.Task{
-		Id:            function.Id,
-		Status:        "Init",
-		SuccessChecks: 0,
-		FailureChecks: 0,
-	})
+	task := hc.getTask(function.Id)
+	log.Info(fmt.Sprintf("%s: Started task", task.Id))
 
 	if function.Location.Type == "kubernetes" {
 		podIps, err := hc.watchDog.GetPodIp(function.Location.Deployment, function.Location.Namespace)
@@ -161,8 +166,8 @@ func (hc *HealthCheck) check(function *model.Job) bool {
 }
 
 func (hc *HealthCheck) checkWs(function *model.Job) bool {
-	for _, url := range function.Urls {
-		difference := hc.wsClient.DifferenceLastMessageTime(function.Id, url)
+	for _, u := range function.Urls {
+		difference := hc.wsClient.TimeDifferenceWithLastMessage(function.Id, u)
 
 		if difference > function.Timeout {
 			log.Error(fmt.Sprintf("%s: error wss last message exceeded timeout", function.Id))
@@ -184,16 +189,18 @@ func (hc *HealthCheck) getHttpClient(function *model.Job) *http.Client {
 }
 
 func (hc *HealthCheck) checkHttpGet(function *model.Job) bool {
-	for _, url := range function.Urls {
-		req, err := http.NewRequest("GET", url, nil)
+	start := time.Now()
+
+	for _, u := range function.Urls {
+		req, err := http.NewRequest("GET", u, nil)
 		if err != nil {
 			return false
 		}
 
 		if function.ResponseTimeout > 0 {
 			ctx, cancel := context.WithTimeout(context.Background(), time.Duration(function.ResponseTimeout)*time.Second)
-			defer cancel()
 			req = req.WithContext(ctx)
+			defer cancel()
 		}
 
 		resp, err := hc.getHttpClient(function).Do(req)
@@ -205,14 +212,19 @@ func (hc *HealthCheck) checkHttpGet(function *model.Job) bool {
 			log.Error(fmt.Sprintf("%s: Empty http get result or invalid response code", function.Id))
 			return false
 		}
+		defer resp.Body.Close()
 	}
+
+
+	hc.exporter.SetGauge(function.Id, float64(time.Since(start).Milliseconds()))
+	log.Info(fmt.Sprintf("%s %s", function.Id, time.Since(start)))
 
 	return true
 }
 
 func (hc *HealthCheck) checkHttpPost(function *model.Job) bool {
-	for _, url := range function.Urls {
-		req, err := http.NewRequest("POST", url, strings.NewReader(function.Body))
+	for _, u := range function.Urls {
+		req, err := http.NewRequest("POST", u, strings.NewReader(function.Body))
 		if err != nil {
 			return false
 		}
@@ -222,8 +234,8 @@ func (hc *HealthCheck) checkHttpPost(function *model.Job) bool {
 
 		if function.ResponseTimeout > 0 {
 			ctx, cancel := context.WithTimeout(context.Background(), time.Duration(function.ResponseTimeout)*time.Second)
-			defer cancel()
 			req = req.WithContext(ctx)
+			defer cancel()
 		}
 
 		resp, err := hc.getHttpClient(function).Do(req)
@@ -235,6 +247,7 @@ func (hc *HealthCheck) checkHttpPost(function *model.Job) bool {
 			log.Error(fmt.Sprintf("Empty http post result or invalid response code"))
 			return false
 		}
+		defer resp.Body.Close()
 	}
 
 	return true

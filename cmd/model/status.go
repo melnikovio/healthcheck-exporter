@@ -3,7 +3,7 @@ package model
 //swagger:model
 type Status struct {
 	// required: true
-	Task []Task `json:"tasks,omitempty"`
+	Tasks map[string]*Task `json:"tasks,omitempty"`
 }
 
 //swagger:model
@@ -11,7 +11,7 @@ type Task struct {
 	// required: true
 	Id string `json:"id,omitempty"`
 	// required: true
-	Status string `json:"status,omitempty"`
+	Online bool `json:"online,omitempty"`
 	// required: true
 	SuccessChecks int `json:"success_checks,omitempty"`
 	// required: true

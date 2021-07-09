@@ -2,85 +2,128 @@ package healthcheck
 
 import (
 	"fmt"
-	"github.com/gorilla/websocket"
+	"github.com/healthcheck-exporter/cmd/exporter"
+	"github.com/sacOO7/gowebsocket"
 	log "github.com/sirupsen/logrus"
 	"time"
 )
 
 type WsClient struct {
-	connection []wsConnection
+	connections map[string]*WsConnection
+	prometheus *exporter.Exporter
 }
 
-type wsConnection struct {
+type WsConnection struct {
+	urls  map[string]*Url
+}
+
+type Url struct {
 	url  string
-	time int64
+	Time int64
 }
 
-func NewWsClient() *WsClient {
-	connection := make([]wsConnection, 0)
+func NewWsClient(prometheus *exporter.Exporter) *WsClient {
+	connection := make(map[string]*WsConnection)
 	wc := WsClient{
-		connection: connection,
+		connections: connection,
+		prometheus: prometheus,
 	}
 
 	return &wc
 }
 
-func (ws *WsClient) addUrl(jobId string, url string) {
-	////
-	c, _, err := websocket.DefaultDialer.Dial(url, nil)
-	if err != nil {
-		log.Error(fmt.Sprintf("Error listening ws connection (%s): %s", url, err.Error()))
+func (ws *WsClient) getWsConnection(jobId string) *WsConnection {
+	if ws.connections[jobId] == nil {
+		connection := WsConnection{
+			urls: make (map[string]*Url),
+		}
+		ws.connections[jobId] = &connection
 	}
 
-	if c != nil {
-		ws.connection = append(ws.connection, wsConnection{
-			url:  url,
-			time: time.Now().Unix(),
-		})
-
-		go func() {
-			for {
-				//_, message, err := c.ReadMessage()
-				_, message, err := c.NextReader()
-				if err != nil {
-					log.Info(fmt.Sprintf("Error reading ws connection message: %s", err.Error()))
-					ws.addUrl(jobId, url)
-					break
-				}
-				log.Info(fmt.Sprintf("%s: Received ws connection message", jobId))
-				log.Trace(fmt.Sprintf("Received ws connection message: %s", message))
-
-				for i := 0; i < len(ws.connection); i++ {
-					if ws.connection[i].url == url {
-						ws.connection[i].time = int64(time.Now().Unix())
-					}
-				}
-			}
-		}()
-	}
-	////
+	return ws.connections[jobId]
 }
 
-func (ws *WsClient) LastMessageTime(jobId string, url string) int64 {
-	for i := 0; i < len(ws.connection); i++ {
-		if ws.connection[i].url == url {
-			return ws.connection[i].time
+func (ws *WsClient) getWsUrl(jobId string, urlAddress string) *Url {
+	connection := ws.getWsConnection(jobId)
+	if connection.urls[urlAddress] == nil {
+		url := Url{
+			url:  urlAddress,
+			Time: time.Now().Unix(),
 		}
+		connection.urls[urlAddress] = &url
+		ws.addUrl(&url, jobId)
 	}
 
-	ws.addUrl(jobId, url)
-
-	return 0
+	return connection.urls[urlAddress]
 }
 
-func (ws *WsClient) DifferenceLastMessageTime(jobId string, url string) int64 {
-	for i := 0; i < len(ws.connection); i++ {
-		if ws.connection[i].url == url {
-			return time.Now().Unix() - ws.connection[i].time
-		}
+func (wsClient *WsClient) addUrl(url *Url, jobId string) {
+	log.Info(fmt.Sprintf("Registering url: %s", url.url))
+	socket := gowebsocket.New(url.url)
+
+	socket.OnConnectError = func(err error, socket gowebsocket.Socket) {
+		log.Fatal("Received connect error - ", err)
 	}
 
-	ws.addUrl(jobId, url)
+	socket.OnConnected = func(socket gowebsocket.Socket) {
+		log.Println("Connected to server");
+	}
 
-	return 0
+	socket.OnTextMessage = func(message string, socket gowebsocket.Socket) {
+		log.Println(jobId + ": Received message - " + message)
+		wsClient.prometheus.IncCounter(jobId)
+		url.Time = time.Now().Unix()
+	}
+
+	socket.OnPingReceived = func(data string, socket gowebsocket.Socket) {
+		log.Println("Received ping - " + data)
+	}
+
+	socket.OnPongReceived = func(data string, socket gowebsocket.Socket) {
+		log.Println("Received pong - " + data)
+	}
+
+	socket.OnDisconnected = func(err error, socket gowebsocket.Socket) {
+		log.Println("Disconnected from server ")
+		return
+	}
+
+	socket.Connect()
+
+	//c, _, err := websocket.DefaultDialer.Dial(url.url, nil)
+	//defer c.Close()
+	//
+	//if err != nil {
+	//	log.Error(fmt.Sprintf("Error listening ws connection (%s): %s", url, err.Error()))
+	//}
+	//
+	//if c != nil {
+	//	go func() {
+	//		//c.SetReadLimit(100)
+	//		for {
+	//			_, _, err := c.ReadMessage()
+	//
+	//			//_, _, err := c.NextReader()
+	//			if err != nil {
+	//				log.Error(fmt.Sprintf("Error reading ws message (%s): %s", url, err.Error()))
+	//				break
+	//			}
+	//
+	//			ws.prometheus.IncCounter(jobId)
+	//
+	//			log.Info(fmt.Sprintf("%s: Received ws connection message", jobId))
+	//			//log.Info(fmt.Sprintf("Received ws connection message: %s", message))
+	//
+	//			url.Time = time.Now().Unix()
+	//		}
+	//	}()
+	//}
+}
+
+func (ws *WsClient) TimeLastMessage(jobId string, url string) int64 {
+	return ws.getWsUrl(jobId, url).Time
+}
+
+func (ws *WsClient) TimeDifferenceWithLastMessage(jobId string, url string) int64 {
+	return time.Now().Unix() - ws.getWsUrl(jobId, url).Time
 }

@@ -18,6 +18,8 @@ type Counter struct {
 	id       string
 	status   prometheus.Gauge
 	downtime prometheus.Gauge
+	messagesCount prometheus.Gauge
+	responseTime prometheus.Gauge
 }
 
 func NewExporter(config *model.Config) *Exporter {
@@ -36,10 +38,20 @@ func NewExporter(config *model.Config) *Exporter {
 				Name: fmt.Sprintf("%s_status", config.Jobs[i].Id),
 				Help: fmt.Sprintf("%s работает (0: нет, 1: да)", config.Jobs[i].Description),
 			})
+			messagesCount := promauto.NewGauge(prometheus.GaugeOpts{
+				Name: fmt.Sprintf("%s_messages_count", config.Jobs[i].Id),
+				Help: fmt.Sprintf("%s количество сообщений", config.Jobs[i].Description),
+			})
+			responseTime := promauto.NewGauge(prometheus.GaugeOpts{
+				Name: fmt.Sprintf("%s_response_time", config.Jobs[i].Id),
+				Help: fmt.Sprintf("%s время ответа", config.Jobs[i].Description),
+			})
 			counters[i] = Counter{
 				id:       config.Jobs[i].Id,
 				downtime: downtime,
 				status:   status,
+				messagesCount: messagesCount,
+				responseTime: responseTime,
 			}
 
 			log.Info(fmt.Sprintf("Registered counter %s", config.Jobs[i].Id))
@@ -49,6 +61,22 @@ func NewExporter(config *model.Config) *Exporter {
 	}
 
 	return &ex
+}
+
+func (ex *Exporter) IncCounter(id string) {
+	for i := 0; i < len(ex.counters); i++ {
+		if ex.counters[i].id == id {
+			ex.counters[i].messagesCount.Inc()
+		}
+	}
+}
+
+func (ex *Exporter) SetGauge(id string, value float64) {
+	for i := 0; i < len(ex.counters); i++ {
+		if ex.counters[i].id == id {
+			ex.counters[i].responseTime.Set(value)
+		}
+	}
 }
 
 func (ex *Exporter) SetCounter(id string, value int64) {
