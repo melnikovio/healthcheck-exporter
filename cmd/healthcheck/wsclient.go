@@ -10,11 +10,11 @@ import (
 
 type WsClient struct {
 	connections map[string]*WsConnection
-	prometheus *exporter.Exporter
+	prometheus  *exporter.Exporter
 }
 
 type WsConnection struct {
-	urls  map[string]*Url
+	urls map[string]*Url
 }
 
 type Url struct {
@@ -26,7 +26,7 @@ func NewWsClient(prometheus *exporter.Exporter) *WsClient {
 	connection := make(map[string]*WsConnection)
 	wc := WsClient{
 		connections: connection,
-		prometheus: prometheus,
+		prometheus:  prometheus,
 	}
 
 	return &wc
@@ -35,7 +35,7 @@ func NewWsClient(prometheus *exporter.Exporter) *WsClient {
 func (ws *WsClient) getWsConnection(jobId string) *WsConnection {
 	if ws.connections[jobId] == nil {
 		connection := WsConnection{
-			urls: make (map[string]*Url),
+			urls: make(map[string]*Url),
 		}
 		ws.connections[jobId] = &connection
 	}
@@ -57,16 +57,26 @@ func (ws *WsClient) getWsUrl(jobId string, urlAddress string) *Url {
 	return connection.urls[urlAddress]
 }
 
+func (ws *WsClient) deleteWsUrl(jobId string, urlAddress string) {
+	connection := ws.getWsConnection(jobId)
+	if connection.urls[urlAddress] != nil {
+		delete(connection.urls, urlAddress)
+	}
+}
+
 func (wsClient *WsClient) addUrl(url *Url, jobId string) {
 	log.Info(fmt.Sprintf("Registering url: %s", url.url))
 	socket := gowebsocket.New(url.url)
 
 	socket.OnConnectError = func(err error, socket gowebsocket.Socket) {
+		wsClient.deleteWsUrl(jobId, url.url)
+		wsClient.getWsUrl(jobId, url.url)
 		log.Fatal("Received connect error - ", err)
+		return
 	}
 
 	socket.OnConnected = func(socket gowebsocket.Socket) {
-		log.Println("Connected to server");
+		log.Println("Connected to server")
 	}
 
 	socket.OnTextMessage = func(message string, socket gowebsocket.Socket) {
@@ -85,6 +95,8 @@ func (wsClient *WsClient) addUrl(url *Url, jobId string) {
 
 	socket.OnDisconnected = func(err error, socket gowebsocket.Socket) {
 		log.Println("Disconnected from server ")
+		wsClient.deleteWsUrl(jobId, url.url)
+		wsClient.getWsUrl(jobId, url.url)
 		return
 	}
 
